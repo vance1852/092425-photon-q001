@@ -6,6 +6,7 @@ import argparse
 import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+from .errors import Conflict
 from .service import PhotonService
 
 
@@ -27,13 +28,16 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 token = self.headers.get("Authorization", "").removeprefix("Bearer ")
                 return self._json(200, self.service.get_lot(token, self.path.split("/", 2)[2]))
+            except KeyError as exc:
+                return self._json(404, {"error": f"lot not found: {exc}"})
             except Exception as exc:
                 return self._json(400, {"error": str(exc)})
         return self._json(404, {"error": "not found"})
 
     def do_POST(self):
         try:
-            body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", "0"))))
+            length = int(self.headers.get("Content-Length", "0"))
+            body = json.loads(self.rfile.read(length)) if length else {}
             if self.path == "/login":
                 return self._json(200, {"token": self.service.auth.login(body["user_id"], body["password"])})
             token = self.headers.get("Authorization", "").removeprefix("Bearer ")
@@ -41,12 +45,19 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(201, self.service.create_lot(token, body["lot_id"], body["product"], body["process_rev"], body["wafer_count"]))
             if self.path.startswith("/lots/") and self.path.endswith("/measurements"):
                 lot_id = self.path.split("/")[2]
-                return self._json(201, self.service.add_measurement(token, lot_id, body["wavelength_nm"], body["response"], body.get("noise", 0.0), body["instrument"]))
+                return self._json(201, self.service.add_measurement(
+                    token, lot_id, body["wavelength_nm"], body["response"],
+                    body.get("noise", 0.0), body["instrument"], body.get("measurement_no"),
+                ))
             if self.path.startswith("/lots/") and self.path.endswith("/analysis"):
                 return self._json(200, self.service.analyze(token, self.path.split("/")[2]))
             return self._json(404, {"error": "not found"})
         except PermissionError as exc:
             return self._json(403, {"error": str(exc)})
+        except Conflict as exc:
+            return self._json(409, {"error": str(exc)})
+        except KeyError as exc:
+            return self._json(404, {"error": f"lot not found: {exc}"})
         except Exception as exc:
             return self._json(400, {"error": str(exc)})
 

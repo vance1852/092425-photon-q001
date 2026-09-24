@@ -13,8 +13,11 @@ def run() -> dict:
     service.bootstrap_admin()
     token = service.auth.login("admin", "photon-admin")
     service.create_lot(token, "LOT-DEMO", "CMOS image sensor", "P3.2", 10)
-    for wavelength, response in ((450, .71), (520, .93), (650, .84)):
-        service.add_measurement(token, "LOT-DEMO", wavelength, response, .01, "spectrometer-1")
+    for seq, (wavelength, response) in enumerate(((450, .71), (520, .93), (650, .84)), start=1):
+        service.add_measurement(
+            token, "LOT-DEMO", wavelength, response, .01, "spectrometer-1",
+            measurement_no=f"MEAS-{seq:04d}",
+        )
     result = service.analyze(token, "LOT-DEMO")
     service.approve(token, "LOT-DEMO", "hold", "awaiting quality review")
     return {"status": "ok", "lot": result["lot_id"], "peak": result["spectrum"]["peak_wavelength_nm"], "events": len(service.audit(token, "LOT-DEMO"))}
