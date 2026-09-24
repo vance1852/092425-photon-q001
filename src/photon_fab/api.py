@@ -6,6 +6,7 @@ import argparse
 import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+from .errors import Conflict
 from .service import PhotonService
 
 
@@ -41,12 +42,15 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(201, self.service.create_lot(token, body["lot_id"], body["product"], body["process_rev"], body["wafer_count"]))
             if self.path.startswith("/lots/") and self.path.endswith("/measurements"):
                 lot_id = self.path.split("/")[2]
-                return self._json(201, self.service.add_measurement(token, lot_id, body["wavelength_nm"], body["response"], body.get("noise", 0.0), body["instrument"]))
+                result = self.service.add_measurement(token, lot_id, body["wavelength_nm"], body["response"], body.get("noise", 0.0), body["instrument"], body.get("measurement_no"))
+                return self._json(200 if result.get("replayed") else 201, result)
             if self.path.startswith("/lots/") and self.path.endswith("/analysis"):
                 return self._json(200, self.service.analyze(token, self.path.split("/")[2]))
             return self._json(404, {"error": "not found"})
         except PermissionError as exc:
             return self._json(403, {"error": str(exc)})
+        except Conflict as exc:
+            return self._json(409, {"error": str(exc)})
         except Exception as exc:
             return self._json(400, {"error": str(exc)})
 
